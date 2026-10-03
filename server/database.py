@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, func
+from sqlalchemy import create_engine, Column, Integer, String, DateTime
 from sqlalchemy.orm import sessionmaker, declarative_base
 from config import DATABASE_URL
 import datetime
@@ -16,5 +16,4 @@ class SleepLog(Base):
     duration_seconds = Column(Integer, nullable=True)
     reason = Column(String, nullable=True)
 
-# 테이블 생성
 Base.metadata.create_all(bind=engine)

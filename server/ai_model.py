@@ -1,29 +1,55 @@
-import numpy as np
+import torch
+import torch.nn as nn
+import os
+from config import (
+    WINDOW_SIZE, MODEL_WEIGHTS_PATH, 
+    MODEL_INPUT_SIZE, MODEL_HIDDEN_SIZE, MODEL_NUM_LAYERS
+)
+
+class SleepLSTM(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers):
+        super(SleepLSTM, self).__init__()
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_size, 1)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        out, _ = self.lstm(x)
+        out = self.fc(out[:, -1, :]) 
+        return self.sigmoid(out)
 
 class SleepDetectorModel:
     def __init__(self):
-        # 실제 환경에서는 여기서 data/weights/lstm_model.pth 등을 로드합니다.
-        self.model_loaded = True 
+        self.seq_length = WINDOW_SIZE
+        self.model = SleepLSTM(
+            input_size=MODEL_INPUT_SIZE, 
+            hidden_size=MODEL_HIDDEN_SIZE, 
+            num_layers=MODEL_NUM_LAYERS
+        )
+        
+        # 가중치 파일이 존재할 경우에만 로드 (초기 테스트 에러 방지)
+        if os.path.exists(MODEL_WEIGHTS_PATH):
+            self.model.load_state_dict(torch.load(MODEL_WEIGHTS_PATH, weights_only=True))
+            print(f"[AI] Model loaded successfully from {MODEL_WEIGHTS_PATH}")
+        else:
+            print(f"[AI] Warning: Model weights not found at {MODEL_WEIGHTS_PATH}. Using untrained model.")
+            
+        self.model.eval()
 
     def predict(self, timeseries_buffer):
-        """
-        timeseries_buffer: N프레임 분량의 데이터 (리스트 또는 numpy array)
-        반환값: True(수면) / False(정상)
-        """
-        # TODO: 실제 LSTM 모델 추론 로직 삽입
-        # 현재는 더미 로직: 마지막 프레임의 EAR이 0.2 이하가 연속되면 수면으로 간주
-        if len(timeseries_buffer) == 0:
+        if len(timeseries_buffer) < self.seq_length:
             return False
             
-        latest_data = timeseries_buffer[-1]
-        
-        # 얼굴을 놓친 경우 이탈(수면)로 판단
-        if not latest_data.get('face_detected', True):
-            return True
+        features = []
+        for frame in timeseries_buffer[-self.seq_length:]:
+            if not frame.get('face_detected', True):
+                return True 
+            features.append([frame.get('ear', 0), frame.get('mar', 0), frame.get('pitch', 0)])
             
-        ear = latest_data.get('ear', 1.0)
+        input_tensor = torch.tensor([features], dtype=torch.float32)
         
-        # 단순 임계값 테스트용 (실제로는 버퍼 전체를 모델에 입력)
-        if ear < 0.2:
-            return True
-        return False
+        with torch.no_grad():
+            output = self.model(input_tensor)
+            probability = output.item()
+            
+        return probability > 0.5

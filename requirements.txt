@@ -4,3 +4,6 @@ python-socketio
 psycopg2-binary
 sqlalchemy
 numpy
+torch
+pandas
+python-dotenv
