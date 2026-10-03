@@ -1,13 +1,15 @@
 import os
 from dotenv import load_dotenv
 
-# .env 파일 로드 (루트 경로 기준)
+# .env 파일 로드
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
 
-# 데이터베이스
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/sleepdb")
+# .env 파일이 없거나 설정되지 않았을 때 더미/빈 값을 넣거나 안내 메시지 출력
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-# 서버
+if not DATABASE_URL:
+    raise ValueError("⚠️ .env 파일에 DATABASE_URL 설정이 필요합니다!")
+
 PORT = int(os.getenv("PORT", 8000))
 
 # AI 모델
