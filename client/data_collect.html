@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sleep Data Collector (학습용 데이터 수집기)</title>
+    <!-- MediaPipe 라이브러리 로드 -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; background-color: #f4f4f9; }
+        .container { display: flex; flex-direction: column; align-items: center; gap: 15px; margin-top: 20px; }
+        #outputCanvas { border: 3px solid #333; border-radius: 8px; background-color: #000; }
+        .controls { display: flex; gap: 10px; }
+        button { padding: 10px 20px; font-size: 16px; font-weight: bold; cursor: pointer; border: none; border-radius: 5px; }
+        #btnAwake { background-color: #4CAF50; color: white; }
+        #btnSleep { background-color: #f44336; color: white; }
+        #btnStop { background-color: #ff9800; color: white; display: none; }
+        .info { font-size: 18px; font-weight: bold; padding: 10px; border-radius: 5px; }
+        .info.recording { background-color: #ffebee; color: #c62828; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.5; } }
+    </style>
+</head>
+<body>
+    <h1>캡스톤 데이터 수집기 (AI 학습용)</h1>
+    
+    <div class="container">
+        <video id="videoElement" autoplay playsinline style="display: none;"></video>
+        <canvas id="outputCanvas" width="640" height="480"></canvas>
+        
+        <div id="statusInfo" class="info">현재 상태: 대기 중 (카메라 로딩 대기)</div>
+        <div id="frameCount">수집된 프레임: 0</div>
+        
+        <div class="controls">
+            <!-- Label 0 (정상) 녹화 -->
+            <button id="btnAwake">🟢 정상(Awake) 녹화 시작 [Label: 0]</button>
+            <!-- Label 1 (수면) 녹화 -->
+            <button id="btnSleep">🔴 졸음(Sleep) 녹화 시작 [Label: 1]</button>
+            <!-- 녹화 중지 및 다운로드 -->
+            <button id="btnStop">⏹ 녹화 종료 및 CSV 다운로드</button>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('videoElement');
+        const canvas = document.getElementById('outputCanvas');
+        const ctx = canvas.getContext('2d');
+        const statusInfo = document.getElementById('statusInfo');
+        const frameCountText = document.getElementById('frameCount');
+        
+        const btnAwake = document.getElementById('btnAwake');
+        const btnSleep = document.getElementById('btnSleep');
+        const btnStop = document.getElementById('btnStop');
+
+        let isRecording = false;
+        let currentLabel = 0; // 0: Awake, 1: Sleep
+        let recordedData = []; // CSV로 만들 데이터를 쌓아둘 배열
+
+        // 두 점 사이의 거리 계산
+        function calcDistance(p1, p2) {
+            return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+        }
+
+        // 눈 깜빡임 비율 (EAR) 계산
+        function getEAR(landmarks, leftIndices) {
+            const p1 = landmarks[leftIndices[0]];
+            const p2 = landmarks[leftIndices[1]];
+            const p3 = landmarks[leftIndices[2]];
+            const p4 = landmarks[leftIndices[3]];
+            const p5 = landmarks[leftIndices[4]];
+            const p6 = landmarks[leftIndices[5]];
+
+            const vertical1 = calcDistance(p2, p6);
+            const vertical2 = calcDistance(p3, p5);
+            const horizontal = calcDistance(p1, p4);
+
+            return (vertical1 + vertical2) / (2.0 * horizontal);
+        }
+
+        // 입 벌림 비율 (MAR) 계산
+        function getMAR(landmarks) {
+            const topLip = landmarks[13];
+            const bottomLip = landmarks[14];
+            const leftCorner = landmarks[78];
+            const rightCorner = landmarks[308];
+
+            const vertical = calcDistance(topLip, bottomLip);
+            const horizontal = calcDistance(leftCorner, rightCorner);
+            return vertical / horizontal;
+        }
+
+        // 고개 기울기(Pitch) 근사치 계산 (코끝과 턱의 비율)
+        function getPitch(landmarks) {
+            const topHead = landmarks[10];
+            const chin = landmarks[152];
+            const noseTip = landmarks[1];
+            
+            const faceHeight = calcDistance(topHead, chin);
+            const noseToChin = calcDistance(noseTip, chin);
+            return noseToChin / faceHeight;
+        }
+
+        // 버튼 이벤트 세팅
+        function startRecording(label, statusText) {
+            isRecording = true;
+            currentLabel = label;
+            recordedData = []; // 배열 초기화
+            
+            statusInfo.innerText = statusText;
+            statusInfo.classList.add('recording');
+            btnAwake.style.display = 'none';
+            btnSleep.style.display = 'none';
+            btnStop.style.display = 'block';
+        }
+
+        btnAwake.addEventListener('click', () => startRecording(0, "🔴 [정상] 상태 데이터 녹화 중..."));
+        btnSleep.addEventListener('click', () => startRecording(1, "🔴 [졸음/이탈] 상태 데이터 녹화 중..."));
+        
+        btnStop.addEventListener('click', () => {
+            isRecording = false;
+            statusInfo.innerText = "상태: 녹화 완료. CSV 다운로드 중...";
+            statusInfo.classList.remove('recording');
+            btnAwake.style.display = 'block';
+            btnSleep.style.display = 'block';
+            btnStop.style.display = 'none';
+            downloadCSV();
+        });
+
+        // CSV 다운로드 로직
+        function downloadCSV() {
+            if (recordedData.length === 0) {
+                alert("녹화된 데이터가 없습니다.");
+                return;
+            }
+
+            let csvContent = "data:text/csv;charset=utf-8,";
+            // CSV 헤더
+            csvContent += "timestamp,ear,mar,pitch,label\n";
+            
+            // 데이터 병합
+            recordedData.forEach(row => {
+                csvContent += `${row.timestamp},${row.ear.toFixed(4)},${row.mar.toFixed(4)},${row.pitch.toFixed(4)},${row.label}\n`;
+            });
+
+            // 다운로드 트리거
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            
+            const fileName = currentLabel === 0 ? "sleep_data_awake.csv" : "sleep_data_sleep.csv";
+            link.setAttribute("download", fileName);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            frameCountText.innerText = `마지막 저장: ${recordedData.length} 프레임 저장됨.`;
+        }
+
+        // MediaPipe Face Mesh 초기화
+        const faceMesh = new FaceMesh({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+        }});
+
+        faceMesh.setOptions({
+            maxNumFaces: 1,
+            refineLandmarks: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        faceMesh.onResults((results) => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                if (statusInfo.innerText.includes("대기 중")) {
+                    statusInfo.innerText = "카메라 준비 완료. 아래 버튼을 눌러 녹화를 시작하세요.";
+                }
+
+                const landmarks = results.multiFaceLandmarks[0];
+                
+                // 특징점 계산
+                const leftEAR = getEAR(landmarks, [33, 160, 158, 133, 153, 144]);
+                const rightEAR = getEAR(landmarks, [362, 385, 387, 263, 373, 380]);
+                const avgEAR = (leftEAR + rightEAR) / 2.0;
+                const mar = getMAR(landmarks);
+                const pitch = getPitch(landmarks);
+
+                // 녹화 중일 때만 배열에 데이터 삽입
+                if (isRecording) {
+                    recordedData.push({
+                        timestamp: Date.now(),
+                        ear: avgEAR,
+                        mar: mar,
+                        pitch: pitch,
+                        label: currentLabel
+                    });
+                    frameCountText.innerText = `수집된 프레임: ${recordedData.length}`;
+                }
+
+                // 시각화 (녹화 중 여부와 상관없이 얼굴에 랜드마크 표시)
+                ctx.fillStyle = isRecording ? 'red' : 'lime';
+                landmarks.forEach(p => {
+                    ctx.fillRect(p.x * canvas.width, p.y * canvas.height, 2, 2);
+                });
+            }
+        });
+
+        // 카메라 세팅 및 시작
+        const camera = new Camera(video, {
+            onFrame: async () => {
+                await faceMesh.send({image: video});
+            },
+            width: 640,
+            height: 480
+        });
+        camera.start();
+    </script>
+</body>
+</html>
