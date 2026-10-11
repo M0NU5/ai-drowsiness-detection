@@ -226,3 +226,5 @@ __marimo__/
 *.pyc
 data/weights/*.pth
 data/raw/*.csv
+
+config.js
