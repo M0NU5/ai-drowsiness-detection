@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Edge Sleep Detector</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; }
+        #videoElement { display: none; } /* 원본 비디오는 숨기고 Canvas만 표시 */
+        #outputCanvas { border: 2px solid #ccc; max-width: 100%; }
+        .alert { border-color: red !important; box-shadow: 0 0 20px red; }
+    </style>
+</head>
+<body>
+    <h1>Edge Computing 수면 감지기</h1>
+    <button id="startBtn">모니터링 시작 (권한 허용 및 알람 활성화)</button>
+    <h2 id="statusText">상태: 대기 중</h2>
+    
+    <div>
+        <video id="videoElement" autoplay playsinline></video>
+        <canvas id="outputCanvas" width="640" height="480"></canvas>
+    </div>
+
+    <!-- 빈 오디오 소스, 버튼 클릭 시 load() 되어 Autoplay 정책 우회 -->
+    <audio id="alarmAudio" src="alarm.mp3" preload="auto"></audio>
+
+    <script src="app.js"></script>
+</body>
+</html>
