@@ -18,3 +18,12 @@ MODEL_WEIGHTS_PATH = os.getenv("MODEL_WEIGHTS_PATH", "../data/weights/lstm_sleep
 MODEL_INPUT_SIZE = int(os.getenv("MODEL_INPUT_SIZE", 3))
 MODEL_HIDDEN_SIZE = int(os.getenv("MODEL_HIDDEN_SIZE", 128))
 MODEL_NUM_LAYERS = int(os.getenv("MODEL_NUM_LAYERS", 3))
+
+# 하이퍼 파라미터
+SEQ_LENGTH = int(os.getenv("SEQ_LENGTH", 30))
+INPUT_SIZE = int(os.getenv("INPUT_SIZE", 3))
+HIDDEN_SIZE = int(os.getenv("HIDDEN_SIZE", 128))
+NUM_LAYERS = int(os.getenv("NUM_LAYERS", 3))
+BATCH_SIZE = int(os.getenv("BATCH_SIZE", 16))
+NUM_EPOCHS = int(os.getenv("NUM_EPOCHS", 120))
+LEARNING_RATE = float(os.getenv("LEARNING_RATE", 0.001))

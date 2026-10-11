@@ -1,10 +1,7 @@
 import torch
 import torch.nn as nn
 import os
-from config import (
-    WINDOW_SIZE, MODEL_WEIGHTS_PATH, 
-    MODEL_INPUT_SIZE, MODEL_HIDDEN_SIZE, MODEL_NUM_LAYERS
-)
+from config import MODEL_WEIGHTS_PATH, INPUT_SIZE, HIDDEN_SIZE, NUM_LAYERS
 
 class SleepLSTM(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers):
@@ -20,13 +17,14 @@ class SleepLSTM(nn.Module):
 
 class SleepDetectorModel:
     def __init__(self):
-        self.seq_length = WINDOW_SIZE
+        # 👇 가져온 공통 변수를 사용합니다.
         self.model = SleepLSTM(
-            input_size=MODEL_INPUT_SIZE, 
-            hidden_size=MODEL_HIDDEN_SIZE, 
-            num_layers=MODEL_NUM_LAYERS
+            input_size=INPUT_SIZE, 
+            hidden_size=HIDDEN_SIZE, 
+            num_layers=NUM_LAYERS
         )
-        
+        self.model.load_state_dict(torch.load(MODEL_WEIGHTS_PATH, weights_only=True))
+        self.model.eval()
         # 가중치 파일이 존재할 경우에만 로드 (초기 테스트 에러 방지)
         if os.path.exists(MODEL_WEIGHTS_PATH):
             self.model.load_state_dict(torch.load(MODEL_WEIGHTS_PATH, weights_only=True))

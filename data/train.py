@@ -6,21 +6,25 @@ import torch.optim as optim
 import numpy as np
 import pandas as pd
 from torch.utils.data import DataLoader, TensorDataset
+from dotenv import load_dotenv
 
-# --- 1. 하이퍼파라미터 설정 (소량 데이터 & 과적합 방지 버전) ---
-SEQ_LENGTH = 30     # 클라이언트와 동일하게 30 유지
-INPUT_SIZE = 3      # EAR, MAR, Pitch
-HIDDEN_SIZE = 128   # 뇌 용량 2배 유지
-NUM_LAYERS = 3      # 신경망 깊이 유지
-BATCH_SIZE = 16     # (수정) 데이터를 더 잘게 쪼개서 자주 가중치 업데이트
-NUM_EPOCHS = 120   # (수정) 학습 반복 횟수 대폭 증가
-LEARNING_RATE = 0.001
+# 🔥 [수정] 상위 폴더나 현재 폴더에 있는 .env 파일을 자동으로 찾아서 로드합니다.
+load_dotenv()
+
+# --- 1. 하이퍼파라미터 설정 (.env 연동 버전) ---
+# .env에 값이 없으면 뒤에 적힌 숫자(예: 30, 128 등)를 기본값으로 사용합니다.
+SEQ_LENGTH = int(os.getenv("SEQ_LENGTH", 30))
+INPUT_SIZE = int(os.getenv("INPUT_SIZE", 3))
+HIDDEN_SIZE = int(os.getenv("HIDDEN_SIZE", 128))
+NUM_LAYERS = int(os.getenv("NUM_LAYERS", 3))
+BATCH_SIZE = int(os.getenv("BATCH_SIZE", 16))
+NUM_EPOCHS = int(os.getenv("NUM_EPOCHS", 120))
+LEARNING_RATE = float(os.getenv("LEARNING_RATE", 0.001))
 
 # --- 2. 모델 정의 (LSTM) ---
 class SleepLSTM(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers):
         super(SleepLSTM, self).__init__()
-        # 🔥 (수정) dropout=0.5 추가: 학습 시 신경망의 50%를 무작위로 꺼서 특정 데이터 암기(과적합)를 방지
         self.lstm = nn.LSTM(
             input_size, 
             hidden_size, 
@@ -50,20 +54,15 @@ def create_sequences(data, labels, seq_length):
     return np.array(xs), np.array(ys)
 
 def train_model():
-    # 🔥 GPU(CUDA) 사용 설정
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"=== 현재 학습 장치: {device} ===")
 
-    # 현재 train.py 파일이 있는 절대 경로 확인
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     
-    # 🔥 [수정] train.py 위치에 따른 자동 경로 감지 로직
     if os.path.basename(BASE_DIR) == "data":
-        # train.py가 'data' 폴더 안에 있는 경우
         csv_path = os.path.join(BASE_DIR, "raw", "*.csv")
         save_dir = os.path.join(BASE_DIR, "weights")
     else:
-        # train.py가 최상위 폴더(sleep-cap)에 있는 경우
         csv_path = os.path.join(BASE_DIR, "data", "raw", "*.csv")
         save_dir = os.path.join(BASE_DIR, "data", "weights")
         
@@ -81,7 +80,6 @@ def train_model():
         print(f"읽는 중: {file}")
         df = pd.read_csv(file)
         
-        # 특징(X)과 정답(y) 추출
         features = df[['ear', 'mar', 'pitch']].values
         labels = df['label'].values
         
@@ -95,19 +93,16 @@ def train_model():
     y_final = np.concatenate(all_y, axis=0)
     print(f"총 생성된 시퀀스 데이터 개수: {len(X_final)}개")
 
-    # PyTorch 텐서 변환
     X_tensor = torch.tensor(X_final, dtype=torch.float32)
     y_tensor = torch.tensor(y_final, dtype=torch.float32).view(-1, 1)
 
     dataset = TensorDataset(X_tensor, y_tensor)
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 
-    # 모델을 생성하고 GPU로 전송
     model = SleepLSTM(INPUT_SIZE, HIDDEN_SIZE, NUM_LAYERS).to(device)
     criterion = nn.BCELoss()
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
-    # 최고 성능 모델 저장을 위한 변수
     best_loss = float('inf')
     
     os.makedirs(save_dir, exist_ok=True)
@@ -132,7 +127,6 @@ def train_model():
             
         avg_loss = epoch_loss / len(dataloader)
         
-        # 10 에포크마다 출력 및 최고 성능 갱신 시 저장
         if (epoch+1) % 10 == 0:
             print(f'Epoch [{epoch+1}/{NUM_EPOCHS}], Loss: {avg_loss:.4f}')
             
@@ -140,7 +134,7 @@ def train_model():
             best_loss = avg_loss
             torch.save(model.state_dict(), save_path)
 
-    print(f"\n✅ 학습 완료! 가장 오차가 적은 모델이 정확한 원본 폴더에 저장되었습니다: {save_path}")
+    print(f"\n✅ 학습 완료! 가장 오차가 적은 모델이 저장되었습니다: {save_path}")
     print(f"👑 최종 달성한 최저 Loss: {best_loss:.4f}")
 
 if __name__ == '__main__':
