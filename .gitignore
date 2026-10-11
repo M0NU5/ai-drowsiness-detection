@@ -146,6 +146,9 @@ rabbitmq-data/
 # ActiveMQ
 activemq-data/
 
+#Datasets
+data/raw/
+data/processed/
 # SageMath parsed files
 *.sage.py
 
@@ -207,7 +210,7 @@ tempCodeRunnerFile.py
 
 # Ruff stuff:
 .ruff_cache/
-*.csv
+
 # PyPI configuration file
 .pypirc
 
