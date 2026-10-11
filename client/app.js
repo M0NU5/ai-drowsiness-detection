@@ -1,9 +1,10 @@
-const socket = io('https://fanfare-alright-playmate.ngrok-free.dev', { // ngrok 주소 
-    transports: ['websocket'], // ngrok 페이지가 통신을 가로채는 것을 방지
+const socket = io(ENV.NGROK_URL, { 
+    transports: ['websocket'], 
     extraHeaders: {
         "ngrok-skip-browser-warning": "true"
     }
 });
+
 const video = document.getElementById('videoElement');
 const canvas = document.getElementById('outputCanvas');
 const ctx = canvas.getContext('2d');
