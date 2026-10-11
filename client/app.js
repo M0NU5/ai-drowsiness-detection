@@ -1,5 +1,4 @@
-const SERVER_URL = 'http://192.168.0.15:8000'; // 서버 컴퓨터의 실제 IP
-const socket = io(SERVER_URL);
+const socket = io('https://fanfare-alright-playmate.ngrok-free.dev'); // ngrok 주소 끝에 / 기호는 빼고 넣으세요
 const video = document.getElementById('videoElement');
 const canvas = document.getElementById('outputCanvas');
 const ctx = canvas.getContext('2d');
