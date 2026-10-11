@@ -1,4 +1,4 @@
-const socket = io('https://fanfare-alright-playmate.ngrok-free.dev', { // ngrok 주소 끝에 / 기호는 빼고 넣으세요
+const socket = io('https://fanfare-alright-playmate.ngrok-free.dev', { // ngrok 주소 
     transports: ['websocket'], // ngrok 페이지가 통신을 가로채는 것을 방지
     extraHeaders: {
         "ngrok-skip-browser-warning": "true"
