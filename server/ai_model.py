@@ -36,20 +36,30 @@ class SleepDetectorModel:
             
         self.model.eval()
 
-    def predict(self, timeseries_buffer):
-        if len(timeseries_buffer) < self.seq_length:
+    def predict(self, input_data):
+        import torch # 상단에 없다면 안전하게 함수 안에서라도 호출
+
+    # 1. 데이터 길이가 충분한지 다시 한번 확인 (예: 30프레임)
+        if len(input_data) < 30:
             return False
-            
-        features = []
-        for frame in timeseries_buffer[-self.seq_length:]:
-            if not frame.get('face_detected', True):
-                return True 
-            features.append([frame.get('ear', 0), frame.get('mar', 0), frame.get('pitch', 0)])
-            
-        input_tensor = torch.tensor([features], dtype=torch.float32)
-        
+
+        # 2. 들어온 데이터를 [EAR, MAR, Pitch] 형태의 리스트로 정제
+        processed_data = []
+        for d in input_data:
+            # 딕셔너리 형태일 경우 값만 추출
+            if isinstance(d, dict):
+                processed_data.append([d.get('ear', 0), d.get('mar', 0), d.get('pitch', 0)])
+            else:
+                processed_data.append(d)
+
+        # 3. 누락되었던 input_tensor 명시적으로 생성 (배치 차원 1 추가)
+        input_tensor = torch.tensor(processed_data, dtype=torch.float32).unsqueeze(0)
+
+        # 4. 모델 예측 진행
         with torch.no_grad():
             output = self.model(input_tensor)
             probability = output.item()
+            
+            print(f"👉 현재 수면 확률: {probability:.4f}") 
             
         return probability > 0.5
