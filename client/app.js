@@ -102,15 +102,56 @@ startBtn.addEventListener('click', () => {
 });
 
 // 서버로부터 알람 수신
+let currentUIState = 'awake';
+
 socket.on('sleep_alert', (data) => {
-    if (data.status === 'sleep') {
-        statusText.innerText = "상태: 수면 감지됨! (알람 발생)";
-        canvas.classList.add('alert');
-        alarmAudio.play();
-    } else {
-        statusText.innerText = "상태: 정상";
-        canvas.classList.remove('alert');
-        alarmAudio.pause();
-        alarmAudio.currentTime = 0;
+    if (data.status !== currentUIState) {
+        currentUIState = data.status;
+        updateStatusUI(currentUIState);
+
+        if (currentUIState === 'warning') {
+            addLogItem("⚠️ 졸음 징후 감지 (주의 단계)", "var(--warning-color)");
+        } else if (currentUIState === 'sleep') {
+            addLogItem("🚨 수면 상태 진입 감지! (DB 기록 시작)", "var(--sleep-color)");
+        } else if (currentUIState === 'awake') {
+            addLogItem("✅ 정상 상태 복귀", "var(--awake-color)");
+        }
     }
 });
+
+function updateStatusUI(status) {
+    const badge = document.getElementById('statusBadge');
+    const text = document.getElementById('statusText');
+    const videoContainer = document.getElementById('videoContainer');
+    
+    // 기존 클래스 싹 비우기 (초기화)
+    badge.className = 'status-badge';
+    videoContainer.className = 'video-section';
+
+    if (status === 'warning') {
+        badge.classList.add('warning');
+        text.innerText = "WARNING (DROWSY)";
+        videoContainer.classList.add('warning-alert');
+    } else if (status === 'sleep') {
+        badge.classList.add('sleep');
+        text.innerText = "SLEEPING DETECTED";
+        videoContainer.classList.add('sleep-alert');
+    } else {
+        text.innerText = "AWAKE";
+    }
+}
+
+// 로그 아이템 추가 시 색상을 인자로 받도록 수정
+function addLogItem(message, color) {
+    const logList = document.getElementById('logList');
+    const now = new Date();
+    const timeString = now.toTimeString().split(' ')[0];
+    
+    const logHtml = `
+        <div class="log-item" style="border-left-color: ${color};">
+            <div class="log-time">${timeString}</div>
+            <div>${message}</div>
+        </div>
+    `;
+    logList.insertAdjacentHTML('afterbegin', logHtml);
+}

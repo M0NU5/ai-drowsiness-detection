@@ -2,30 +2,403 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Edge Sleep Detector</title>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Sleep Detection Dashboard</title>
+    <!-- 폰트 적용 -->
+    <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/static/pretendard.css" />
+    
+    <!-- MediaPipe 및 Socket.io 라이브러리 -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+
     <style>
-        body { font-family: sans-serif; text-align: center; }
-        #videoElement { display: none; } /* 원본 비디오는 숨기고 Canvas만 표시 */
-        #outputCanvas { border: 2px solid #ccc; max-width: 100%; }
-        .alert { border-color: red !important; box-shadow: 0 0 20px red; }
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: rgba(30, 41, 59, 0.7);
+            --awake-color: #10b981;   /* 초록 */
+            --warning-color: #eab308; /* 노랑 */
+            --sleep-color: #ef4444;   /* 빨강 */
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Pretendard', sans-serif; }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background-image: radial-gradient(circle at 50% -20%, #1e293b, #0f172a);
+        }
+
+        header {
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            background: var(--panel-bg);
+            backdrop-filter: blur(10px);
+        }
+
+        .logo { font-size: 24px; font-weight: 800; letter-spacing: 1px; }
+        .logo span { color: var(--awake-color); }
+
+        .status-badge {
+            padding: 8px 24px;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);
+            border: 1px solid var(--awake-color);
+            color: var(--awake-color);
+        }
+
+        .dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; }
+
+        .container { display: flex; flex: 1; padding: 30px; gap: 30px; }
+
+        .video-section { flex: 2; display: flex; flex-direction: column; position: relative; }
+
+        #webcam {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 20px;
+            border: 2px solid var(--awake-color);
+            box-shadow: 0 0 30px rgba(16, 185, 129, 0.2);
+            transition: all 0.3s ease;
+            transform: scaleX(-1); /* 거울 모드 좌우 반전 */
+        }
+
+        #outputCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 20px;
+            pointer-events: none;
+            transform: scaleX(-1);
+        }
+
+        .dashboard-section { flex: 1; display: flex; flex-direction: column; gap: 20px; }
+
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 20px;
+            padding: 25px;
+            backdrop-filter: blur(10px);
+        }
+
+        .panel h3 { margin-bottom: 20px; font-size: 18px; color: var(--text-muted); }
+
+        .metric-group { margin-bottom: 15px; }
+        .metric-header { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; }
+        .progress-bg { width: 100%; height: 8px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden; }
+        .progress-bar { height: 100%; background: var(--awake-color); width: 0%; transition: width 0.1s linear; }
+
+        .log-container { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; max-height: 400px; }
+        .log-item {
+            padding: 12px;
+            background: rgba(0,0,0,0.2);
+            border-left: 4px solid var(--awake-color);
+            border-radius: 4px;
+            font-size: 14px;
+            animation: slideIn 0.3s ease-out;
+        }
+        .log-time { color: var(--text-muted); font-size: 12px; margin-bottom: 4px; }
+
+        /* 깜빡임 애니메이션 정의 */
+        @keyframes pulse-anim {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
     </style>
 </head>
 <body>
-    <h1>Edge Computing 수면 감지기</h1>
-    <button id="startBtn">모니터링 시작 (권한 허용 및 알람 활성화)</button>
-    <h2 id="statusText">상태: 대기 중</h2>
-    
-    <div>
-        <video id="videoElement" autoplay playsinline></video>
-        <canvas id="outputCanvas" width="640" height="480"></canvas>
+
+    <header>
+        <div class="logo">Sleep<span>Guard</span> AI</div>
+        <div id="statusBadge" class="status-badge">
+            <div class="dot"></div>
+            <span id="statusText">AWAKE</span>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- 웹캠 송출 화면 -->
+        <div class="video-section" id="videoContainer">
+            <video id="webcam" autoplay playsinline></video>
+            <!-- 랜드마크 시각화를 위한 캔버스 -->
+            <canvas id="outputCanvas" width="640" height="480"></canvas>
+        </div>
+
+        <!-- 우측 실시간 데이터 패널 -->
+        <div class="dashboard-section">
+            <div class="panel">
+                <h3>Live Face Metrics</h3>
+                
+                <div class="metric-group">
+                    <div class="metric-header">
+                        <span>EAR (눈 깜빡임)</span>
+                        <span id="earValue">0.00</span>
+                    </div>
+                    <div class="progress-bg"><div class="progress-bar" id="earBar" style="width: 0%;"></div></div>
+                </div>
+
+                <div class="metric-group">
+                    <div class="metric-header">
+                        <span>MAR (입 벌림)</span>
+                        <span id="marValue">0.00</span>
+                    </div>
+                    <div class="progress-bg"><div class="progress-bar" id="marBar" style="width: 0%;"></div></div>
+                </div>
+
+                <div class="metric-group">
+                    <div class="metric-header">
+                        <span>Pitch (고개 각도)</span>
+                        <span id="pitchValue">0.00</span>
+                    </div>
+                    <div class="progress-bg"><div class="progress-bar" id="pitchBar" style="width: 0%;"></div></div>
+                </div>
+            </div>
+
+            <div class="panel" style="flex: 1; display: flex; flex-direction: column;">
+                <h3>Alert Logs</h3>
+                <div class="log-container" id="logList">
+                    <div class="log-item" style="border-left-color: var(--awake-color);">
+                        <div class="log-time">System</div>
+                        <div>서버 및 카메라 연결 완료. 모니터링을 시작합니다.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <!-- 빈 오디오 소스, 버튼 클릭 시 load() 되어 Autoplay 정책 우회 -->
-    <audio id="alarmAudio" src="alarm.mp3" preload="auto"></audio>
+    <script>
+        // --- 1. 통신 및 UI 업데이트 로직 ---
+        // ngrok 터널 통과용 안전 설정 적용
+        const socket = io('https://fanfare-alright-playmate.ngrok-free.dev', { 
+            transports: ['websocket'], 
+            extraHeaders: {
+                "ngrok-skip-browser-warning": "true"
+            }
+        });
+        
+        let currentUIState = 'awake';
 
-    <script src="app.js"></script>
+        socket.on('connect', () => {
+            console.log('서버에 연결되었습니다.');
+        });
+
+        // 상태 수신 시 UI를 즉시 강제 갱신합니다.
+        socket.on('sleep_alert', (data) => {
+            if (data.status !== currentUIState) {
+                currentUIState = data.status;
+                updateStatusUI(currentUIState);
+
+                if (currentUIState === 'warning') {
+                    addLogItem("⚠️ 졸음 징후 감지 (주의 단계)", "var(--warning-color)");
+                } else if (currentUIState === 'sleep') {
+                    addLogItem("🚨 수면 상태 진입 감지! (DB 기록 시작)", "var(--sleep-color)");
+                } else if (currentUIState === 'awake') {
+                    addLogItem("✅ 정상 상태 복귀", "var(--awake-color)");
+                }
+            }
+        });
+
+        // 🔥 [개선] 클래스 이름 충돌을 피하기 위해 인라인 스타일을 자바스크립트로 직접 강제 변경합니다.
+        function updateStatusUI(status) {
+            const badge = document.getElementById('statusBadge');
+            const text = document.getElementById('statusText');
+            const webcam = document.getElementById('webcam');
+
+            if (status === 'warning') {
+                // 노란색(주의) 스타일 강제 부여
+                badge.style.borderColor = 'var(--warning-color)';
+                badge.style.color = 'var(--warning-color)';
+                badge.style.boxShadow = '0 0 20px rgba(234, 179, 8, 0.6)';
+                text.innerText = "WARNING (DROWSY)";
+
+                webcam.style.borderColor = 'var(--warning-color)';
+                webcam.style.boxShadow = '0 0 40px rgba(234, 179, 8, 0.4)';
+                badge.style.animation = 'pulse-anim 1s infinite';
+            } else if (status === 'sleep') {
+                // 빨간색(수면) 스타일 강제 부여
+                badge.style.borderColor = 'var(--sleep-color)';
+                badge.style.color = 'var(--sleep-color)';
+                badge.style.boxShadow = '0 0 25px rgba(239, 68, 68, 0.8)';
+                text.innerText = "SLEEPING DETECTED";
+
+                webcam.style.borderColor = 'var(--sleep-color)';
+                webcam.style.boxShadow = '0 0 50px rgba(239, 68, 68, 0.6)';
+                badge.style.animation = 'pulse-anim 0.5s infinite';
+            } else {
+                // 기본 초록색(정상) 스타일 강제 부여
+                badge.style.borderColor = 'var(--awake-color)';
+                badge.style.color = 'var(--awake-color)';
+                badge.style.boxShadow = '0 0 15px rgba(16, 185, 129, 0.4)';
+                text.innerText = "AWAKE";
+
+                webcam.style.borderColor = 'var(--awake-color)';
+                webcam.style.boxShadow = '0 0 30px rgba(16, 185, 129, 0.2)';
+                badge.style.animation = 'none';
+            }
+        }
+
+        function addLogItem(message, color) {
+            const logList = document.getElementById('logList');
+            const now = new Date();
+            const timeString = now.toTimeString().split(' ')[0];
+            
+            const logHtml = `
+                <div class="log-item" style="border-left-color: ${color};">
+                    <div class="log-time">${timeString}</div>
+                    <div>${message}</div>
+                </div>
+            `;
+            logList.insertAdjacentHTML('afterbegin', logHtml);
+        }
+
+        function updateMetricsUI(ear, mar, pitch) {
+            document.getElementById('earValue').innerText = ear.toFixed(3);
+            document.getElementById('marValue').innerText = mar.toFixed(3);
+            document.getElementById('pitchValue').innerText = pitch.toFixed(3);
+            
+            // 게이지 바 애니메이션과 색상 동기화
+            const earBar = document.getElementById('earBar');
+            const marBar = document.getElementById('marBar');
+            const pitchBar = document.getElementById('pitchBar');
+
+            let activeColor = 'var(--awake-color)';
+            if (currentUIState === 'warning') activeColor = 'var(--warning-color)';
+            else if (currentUIState === 'sleep') activeColor = 'var(--sleep-color)';
+
+            earBar.style.backgroundColor = activeColor;
+            marBar.style.backgroundColor = activeColor;
+            pitchBar.style.backgroundColor = activeColor;
+
+            earBar.style.width = Math.min(ear * 300, 100) + '%';
+            marBar.style.width = Math.min(mar * 150, 100) + '%';
+            pitchBar.style.width = Math.min(Math.abs(pitch) * 200, 100) + '%';
+        }
+
+
+        // --- 2. MediaPipe 얼굴 인식 및 핵심 수식 ---
+        const videoElement = document.getElementById('webcam');
+        const canvasElement = document.getElementById('outputCanvas');
+        const canvasCtx = canvasElement.getContext('2d');
+
+        function calcDistance(p1, p2) {
+            return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+        }
+
+        function getEAR(landmarks, leftIndices) {
+            const p1 = landmarks[leftIndices[0]];
+            const p2 = landmarks[leftIndices[1]];
+            const p3 = landmarks[leftIndices[2]];
+            const p4 = landmarks[leftIndices[3]];
+            const p5 = landmarks[leftIndices[4]];
+            const p6 = landmarks[leftIndices[5]];
+
+            const vertical1 = calcDistance(p2, p6);
+            const vertical2 = calcDistance(p3, p5);
+            const horizontal = calcDistance(p1, p4);
+
+            return (vertical1 + vertical2) / (2.0 * horizontal);
+        }
+
+        function getMAR(landmarks) {
+            const topLip = landmarks[13];
+            const bottomLip = landmarks[14];
+            const leftCorner = landmarks[78];
+            const rightCorner = landmarks[308];
+
+            const vertical = calcDistance(topLip, bottomLip);
+            const horizontal = calcDistance(leftCorner, rightCorner);
+            return vertical / horizontal;
+        }
+
+        function getPitch(landmarks) {
+            const topHead = landmarks[10];
+            const chin = landmarks[152];
+            const noseTip = landmarks[1];
+            
+            const faceHeight = calcDistance(topHead, chin);
+            const noseToChin = calcDistance(noseTip, chin);
+            return noseToChin / faceHeight;
+        }
+
+        function onResults(results) {
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                const landmarks = results.multiFaceLandmarks[0];
+                
+                const leftEAR = getEAR(landmarks, [33, 160, 158, 133, 153, 144]);
+                const rightEAR = getEAR(landmarks, [362, 385, 387, 263, 373, 380]);
+                const avgEAR = (leftEAR + rightEAR) / 2.0;
+                const mar = getMAR(landmarks);
+                const pitch = getPitch(landmarks);
+
+                updateMetricsUI(avgEAR, mar, pitch);
+
+                socket.emit('process_frame', {
+                    ear: avgEAR,
+                    mar: mar,
+                    pitch: pitch,
+                    face_detected: true
+                });
+
+                // 얼굴 랜드마크 마킹 그리기
+                canvasCtx.fillStyle = currentUIState === 'sleep' ? 'red' : (currentUIState === 'warning' ? 'yellow' : 'lime');
+                landmarks.forEach(p => {
+                    canvasCtx.fillRect(p.x * canvasElement.width, p.y * canvasElement.height, 2, 2);
+                });
+
+            } else {
+                updateMetricsUI(0, 0, 0);
+                socket.emit('process_frame', { ear: 0, mar: 0, pitch: 0, face_detected: false });
+            }
+        }
+
+        const faceMesh = new FaceMesh({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+        }});
+        
+        faceMesh.setOptions({
+            maxNumFaces: 1,
+            refineLandmarks: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+        
+        faceMesh.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await faceMesh.send({image: videoElement});
+            },
+            width: 640,
+            height: 480
+        });
+        camera.start();
+    </script>
 </body>
 </html>
