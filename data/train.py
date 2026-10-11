@@ -13,7 +13,7 @@ INPUT_SIZE = 3      # EAR, MAR, Pitch
 HIDDEN_SIZE = 128   # 뇌 용량 2배 유지
 NUM_LAYERS = 3      # 신경망 깊이 유지
 BATCH_SIZE = 16     # (수정) 데이터를 더 잘게 쪼개서 자주 가중치 업데이트
-NUM_EPOCHS = 300    # (수정) 학습 반복 횟수 대폭 증가
+NUM_EPOCHS = 120   # (수정) 학습 반복 횟수 대폭 증가
 LEARNING_RATE = 0.001
 
 # --- 2. 모델 정의 (LSTM) ---
@@ -54,11 +54,23 @@ def train_model():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"=== 현재 학습 장치: {device} ===")
 
-    # 프로젝트 루트 기준 경로 설정
-    csv_files = glob.glob("raw/*.csv") 
+    # 현재 train.py 파일이 있는 절대 경로 확인
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    
+    # 🔥 [수정] train.py 위치에 따른 자동 경로 감지 로직
+    if os.path.basename(BASE_DIR) == "data":
+        # train.py가 'data' 폴더 안에 있는 경우
+        csv_path = os.path.join(BASE_DIR, "raw", "*.csv")
+        save_dir = os.path.join(BASE_DIR, "weights")
+    else:
+        # train.py가 최상위 폴더(sleep-cap)에 있는 경우
+        csv_path = os.path.join(BASE_DIR, "data", "raw", "*.csv")
+        save_dir = os.path.join(BASE_DIR, "data", "weights")
+        
+    csv_files = glob.glob(csv_path) 
     
     if len(csv_files) == 0:
-        print("⚠️ data/raw/ 폴더에 CSV 파일이 없습니다!")
+        print(f"⚠️ {csv_path} 경로에 CSV 파일이 없습니다!")
         return
 
     all_X = []
@@ -97,7 +109,7 @@ def train_model():
 
     # 최고 성능 모델 저장을 위한 변수
     best_loss = float('inf')
-    save_dir = 'data/weights'
+    
     os.makedirs(save_dir, exist_ok=True)
     save_path = os.path.join(save_dir, 'lstm_sleep_model.pth')
 
@@ -107,7 +119,6 @@ def train_model():
         
         model.train()
         for batch_x, batch_y in dataloader:
-            # 🔥 데이터를 GPU로 전송
             batch_x = batch_x.to(device)
             batch_y = batch_y.to(device)
             
@@ -129,7 +140,7 @@ def train_model():
             best_loss = avg_loss
             torch.save(model.state_dict(), save_path)
 
-    print(f"\n✅ 학습 완료! 가장 오차가 적은 모델이 저장되었습니다: {save_path}")
+    print(f"\n✅ 학습 완료! 가장 오차가 적은 모델이 정확한 원본 폴더에 저장되었습니다: {save_path}")
     print(f"👑 최종 달성한 최저 Loss: {best_loss:.4f}")
 
 if __name__ == '__main__':
