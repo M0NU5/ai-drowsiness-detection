@@ -1,4 +1,4 @@
-const socket = io(ENV.NGROK_URL, { 
+const socket = io('https://fanfare-alright-playmate.ngrok-free.dev', { 
     transports: ['websocket'], 
     extraHeaders: {
         "ngrok-skip-browser-warning": "true"
@@ -21,19 +21,41 @@ function calcDistance(p1, p2) {
 
 // EAR (눈 깜빡임 비율) 계산
 function getEAR(landmarks, leftIndices) {
-    // Left eye indices: 33, 160, 158, 133, 153, 144
     const p1 = landmarks[leftIndices[0]];
     const p2 = landmarks[leftIndices[1]];
     const p3 = landmarks[leftIndices[2]];
     const p4 = landmarks[leftIndices[3]];
     const p5 = landmarks[leftIndices[4]];
-    const p6 = landmarks[leftIndices[5]];
+    const p6 = landmarks[leftIndices[5]]; 
 
     const vertical1 = calcDistance(p2, p6);
     const vertical2 = calcDistance(p3, p5);
     const horizontal = calcDistance(p1, p4);
 
     return (vertical1 + vertical2) / (2.0 * horizontal);
+}
+
+// 🔥 추가됨: MAR (입 벌림) 계산
+function getMAR(landmarks) {
+    const topLip = landmarks[13];
+    const bottomLip = landmarks[14];
+    const leftCorner = landmarks[78];
+    const rightCorner = landmarks[308];
+
+    const vertical = calcDistance(topLip, bottomLip);
+    const horizontal = calcDistance(leftCorner, rightCorner);
+    return vertical / horizontal;
+}
+
+// 🔥 추가됨: Pitch (고개 각도) 계산
+function getPitch(landmarks) {
+    const topHead = landmarks[10];
+    const chin = landmarks[152];
+    const noseTip = landmarks[1];
+    
+    const faceHeight = calcDistance(topHead, chin);
+    const noseToChin = calcDistance(noseTip, chin);
+    return noseToChin / faceHeight;
 }
 
 // MediaPipe Face Mesh 초기화
@@ -59,6 +81,9 @@ faceMesh.onResults((results) => {
         const leftEAR = getEAR(landmarks, [33, 160, 158, 133, 153, 144]);
         const rightEAR = getEAR(landmarks, [362, 385, 387, 263, 373, 380]);
         const avgEAR = (leftEAR + rightEAR) / 2.0;
+        
+        const mar = getMAR(landmarks);
+        const pitch = getPitch(landmarks);
 
         // 마커 그리기 (시각화)
         ctx.fillStyle = 'lime';
@@ -66,16 +91,17 @@ faceMesh.onResults((results) => {
             ctx.fillRect(p.x * canvas.width, p.y * canvas.height, 2, 2);
         });
 
-        // 서버로 특징 데이터 전송
+        // 서버로 특징 데이터 전송 (AI 판단용 3가지 필수 데이터 모두 포함)
         socket.emit('process_frame', {
             face_detected: true,
             ear: avgEAR,
-            mar: 0.0, // MAR 및 Pitch 등 추가 구현 영역
+            mar: mar,
+            pitch: pitch,
             timestamp: Date.now()
         });
     } else {
         // 얼굴을 놓쳤을 경우 예외 처리
-        socket.emit('process_frame', { face_detected: false, timestamp: Date.now() });
+        socket.emit('process_frame', { face_detected: false, ear: 0, mar: 0, pitch: 0, timestamp: Date.now() });
     }
 });
 
@@ -103,56 +129,23 @@ startBtn.addEventListener('click', () => {
 });
 
 // 서버로부터 알람 수신
-let currentUIState = 'awake';
-
 socket.on('sleep_alert', (data) => {
-    if (data.status !== currentUIState) {
-        currentUIState = data.status;
-        updateStatusUI(currentUIState);
-
-        if (currentUIState === 'warning') {
-            addLogItem("⚠️ 졸음 징후 감지 (주의 단계)", "var(--warning-color)");
-        } else if (currentUIState === 'sleep') {
-            addLogItem("🚨 수면 상태 진입 감지! (DB 기록 시작)", "var(--sleep-color)");
-        } else if (currentUIState === 'awake') {
-            addLogItem("✅ 정상 상태 복귀", "var(--awake-color)");
+    if (data.status === 'sleep') {
+        statusText.innerText = "상태: 수면 감지됨! (알람 발생)";
+        canvas.classList.add('alert');
+        
+        // 오디오 재생 (에러 방지 처리 추가)
+        let playPromise = alarmAudio.play();
+        if (playPromise !== undefined) {
+            playPromise.catch(error => {
+                console.log("오디오 재생이 차단되었거나 에러가 발생했습니다:", error);
+            });
         }
+    } else {
+        statusText.innerText = "상태: 정상";
+        canvas.classList.remove('alert');
+        
+        alarmAudio.pause();
+        alarmAudio.currentTime = 0; // 처음으로 되감기
     }
 });
-
-function updateStatusUI(status) {
-    const badge = document.getElementById('statusBadge');
-    const text = document.getElementById('statusText');
-    const videoContainer = document.getElementById('videoContainer');
-    
-    // 기존 클래스 싹 비우기 (초기화)
-    badge.className = 'status-badge';
-    videoContainer.className = 'video-section';
-
-    if (status === 'warning') {
-        badge.classList.add('warning');
-        text.innerText = "WARNING (DROWSY)";
-        videoContainer.classList.add('warning-alert');
-    } else if (status === 'sleep') {
-        badge.classList.add('sleep');
-        text.innerText = "SLEEPING DETECTED";
-        videoContainer.classList.add('sleep-alert');
-    } else {
-        text.innerText = "AWAKE";
-    }
-}
-
-// 로그 아이템 추가 시 색상을 인자로 받도록 수정
-function addLogItem(message, color) {
-    const logList = document.getElementById('logList');
-    const now = new Date();
-    const timeString = now.toTimeString().split(' ')[0];
-    
-    const logHtml = `
-        <div class="log-item" style="border-left-color: ${color};">
-            <div class="log-time">${timeString}</div>
-            <div>${message}</div>
-        </div>
-    `;
-    logList.insertAdjacentHTML('afterbegin', logHtml);
-}
