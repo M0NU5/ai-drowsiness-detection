@@ -186,3 +186,4 @@ uvicorn app:socket_app --host 0.0.0.0 --port 8000 --reload
 
 # 클라이언트 실행
 # index.html 파일을 웹 브라우저(Chrome 권장)에서 엽니다.
+또는 ngork 주소나 포워딩된 주소를 입력합니다. 크롬권장.
