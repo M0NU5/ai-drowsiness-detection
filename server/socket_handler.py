@@ -38,7 +38,7 @@ async def process_frame(sid, data):
 
         # 상태 결정 (카운터 기준)
         new_state = "awake"
-        if sleep_counter >= 25:    # 약 0.6초 연속 수면 -> 완전 수면 (DB 저장)
+        if sleep_counter >= 25:    # 연속 수면 -> 완전 수면 (DB 저장)
             new_state = "sleep"
         elif sleep_counter >= 5:   # 약 0.2초 연속 수면 -> 주의 (경고만 줌)
             new_state = "warning"
