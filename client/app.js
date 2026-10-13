@@ -1,4 +1,4 @@
-const socket = io('https://fanfare-alright-playmate.ngrok-free.dev', { 
+const socket = io(ENV.NGROK_URL, { 
     transports: ['websocket'], 
     extraHeaders: {
         "ngrok-skip-browser-warning": "true"
@@ -11,14 +11,34 @@ const ctx = canvas.getContext('2d');
 const startBtn = document.getElementById('startBtn');
 const alarmAudio = document.getElementById('alarmAudio');
 const statusText = document.getElementById('statusText');
-
+let alarmInterval = null; // 5초 반복 타이머를 저장할 변수
 let isRunning = false;
-
+let isCurrentlySleeping = false;
 // 두 점 사이의 유클리디안 거리 계산 함수
 function calcDistance(p1, p2) {
     return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
 }
+function playAlarm() {
+    alarmAudio.currentTime = 0; // 재생할 때마다 소리를 맨 처음으로 되감기
+    let playPromise = alarmAudio.play();
+    if (playPromise !== undefined) {
+        playPromise.catch(error => console.log("오디오 에러 무시:", error));
+    }
+}
+function startAlarmLoop() {
+    // 수면 상태가 아니면(주의/정상) 타이머 사이클을 즉시 멈춤
+    if (!isCurrentlySleeping) return; 
+    
+    console.log("알람 재생 (다음 재생은 5초 뒤)");
+    alarmAudio.currentTime = 0; // 소리를 맨 앞으로 되감기
+    let playPromise = alarmAudio.play();
+    if (playPromise !== undefined) {
+        playPromise.catch(e => console.log("무시됨"));
+    }
 
+    // 정확히 5초(5000ms) 뒤에 자기 자신을 다시 부름 (절대 끊기지 않음)
+    alarmInterval = setTimeout(startAlarmLoop, 5000);
+}
 // EAR (눈 깜빡임 비율) 계산
 function getEAR(landmarks, leftIndices) {
     const p1 = landmarks[leftIndices[0]];
@@ -130,22 +150,35 @@ startBtn.addEventListener('click', () => {
 
 // 서버로부터 알람 수신
 socket.on('sleep_alert', (data) => {
+    
     if (data.status === 'sleep') {
         statusText.innerText = "상태: 수면 감지됨! (알람 발생)";
         canvas.classList.add('alert');
         
-        // 오디오 재생 (에러 방지 처리 추가)
-        let playPromise = alarmAudio.play();
-        if (playPromise !== undefined) {
-            playPromise.catch(error => {
-                console.log("오디오 재생이 차단되었거나 에러가 발생했습니다:", error);
-            });
-        }
+        // 이미 알람 사이클이 돌고 있다면 무시 (소리 겹침 방지)
+        if (isCurrentlySleeping) return; 
+        isCurrentlySleeping = true;
+        
+        // 수면 상태 진입 즉시 5초 반복 사이클 작동 시작!
+        startAlarmLoop();
+        
+    } else if (data.status === 'warning') {
+        statusText.innerText = "상태: 졸음 주의 (경계 단계)";
+        canvas.classList.remove('alert');
+        
+        // 주의 단계일 때 알람 끄고 사이클 파괴
+        isCurrentlySleeping = false;
+        if (alarmInterval) clearTimeout(alarmInterval);
+        alarmAudio.pause();
+        
     } else {
         statusText.innerText = "상태: 정상";
         canvas.classList.remove('alert');
         
+        // 정상 상태일 때 알람 끄고 사이클 파괴 및 소리 되감기
+        isCurrentlySleeping = false;
+        if (alarmInterval) clearTimeout(alarmInterval);
         alarmAudio.pause();
-        alarmAudio.currentTime = 0; // 처음으로 되감기
+        alarmAudio.currentTime = 0;
     }
 });

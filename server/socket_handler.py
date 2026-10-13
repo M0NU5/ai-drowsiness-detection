@@ -12,7 +12,7 @@ model = SleepDetectorModel()
 
 current_state = "awake"
 current_log_id = None
-sleep_counter = 0  # 🔥 졸음 지속 시간을 체크할 카운터 추가
+sleep_counter = 0  #졸음 지속 시간을 체크할 카운터 추가
 
 @sio.event
 async def connect(sid, environ):
@@ -30,7 +30,7 @@ async def process_frame(sid, data):
     db = SessionLocal()
     
     try:
-        # 🔥 모델이 수면으로 판단하면 카운터를 올리고, 아니면 0으로 초기화
+        # 모델이 수면으로 판단하면 카운터를 올리고, 아니면 0으로 초기화
         if is_sleeping:
             sleep_counter += 1
         else:
@@ -38,7 +38,7 @@ async def process_frame(sid, data):
 
         # 상태 결정 (카운터 기준)
         new_state = "awake"
-        if sleep_counter >= 45:    # 약 1.5초 연속 수면 -> 완전 수면 (DB 저장)
+        if sleep_counter >= 25:    # 약 0.6초 연속 수면 -> 완전 수면 (DB 저장)
             new_state = "sleep"
         elif sleep_counter >= 5:   # 약 0.2초 연속 수면 -> 주의 (경고만 줌)
             new_state = "warning"
@@ -85,7 +85,7 @@ async def process_frame(sid, data):
 
     except Exception as e:
         db.rollback()
-        print(f"\n❌ [DB 작업 실패 원인]: {e}\n")
+        print(f"\n [DB 작업 실패 원인]: {e}\n")
     finally:
         db.close()
 

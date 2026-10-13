@@ -131,7 +131,7 @@
     </style>
 </head>
 <body>
-
+    
     <header>
         <div class="logo">Sleep<span>Guard</span> AI</div>
         <div id="statusBadge" class="status-badge">
@@ -139,7 +139,7 @@
             <span id="statusText">AWAKE</span>
         </div>
     </header>
-
+    <audio id="alarmAudio" src="alarm.mp3" preload="auto"></audio>
     <div class="container">
         <!-- 웹캠 송출 화면 -->
         <div class="video-section" id="videoContainer">
@@ -210,17 +210,29 @@
         socket.on('sleep_alert', (data) => {
             if (data.status !== currentUIState) {
                 currentUIState = data.status;
-                updateStatusUI(currentUIState);
+            updateStatusUI(currentUIState);
 
-                if (currentUIState === 'warning') {
-                    addLogItem("⚠️ 졸음 징후 감지 (주의 단계)", "var(--warning-color)");
-                } else if (currentUIState === 'sleep') {
-                    addLogItem("🚨 수면 상태 진입 감지! (DB 기록 시작)", "var(--sleep-color)");
-                } else if (currentUIState === 'awake') {
-                    addLogItem("✅ 정상 상태 복귀", "var(--awake-color)");
+            if (currentUIState === 'warning') {
+                addLogItem("⚠️ 졸음 징후 감지 (주의 단계)", "var(--warning-color)");
+            } else if (currentUIState === 'sleep') {
+                addLogItem("🚨 수면 상태 진입 감지! (DB 기록 시작)", "var(--sleep-color)");
+                
+                // 🔥 [수정 포인트 1] 수면 상태가 되면 알람을 켭니다.
+                let playPromise = alarmAudio.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                        console.log("오디오 재생 에러 무시됨:", error);
+                    });
                 }
+            } else if (currentUIState === 'awake') {
+                addLogItem("✅ 정상 상태 복귀", "var(--awake-color)");
+                
+                // 🔥 [수정 포인트 2] 정상 상태로 돌아오면 알람을 끄고 처음으로 되감습니다.
+                alarmAudio.pause();
+                alarmAudio.currentTime = 0;
             }
-        });
+        }
+            });
 
         // 🔥 [개선] 클래스 이름 충돌을 피하기 위해 인라인 스타일을 자바스크립트로 직접 강제 변경합니다.
         function updateStatusUI(status) {
@@ -398,7 +410,9 @@
             height: 480
         });
         camera.start();
-        
     </script>
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+    
 </body>
 </html>
