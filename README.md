@@ -178,7 +178,7 @@ Socket.IO를 활용하여 클라이언트에서 계산한 특징값을 서버로
 1. 저장소 클론: `git clone [저장소 URL]`
 2. 클라이언트 환경 설정: `client/config.sample.js` 파일의 이름을 `config.js`로 변경하고, 사용 중인 ngrok 주소 등 서버 URL을 입력합니다.
 3. 데이터베이스 설정: 서버 폴더에 `.env` 파일을 생성하고 PostgreSQL 접속 정보를 입력합니다.
-
+4. 'client/index.html'파일의 196번째줄의 주소 또한 포워딩한 주소로 변경합니다.
 ### 2. 서버 및 클라이언트 실행
 ```bash
 # 백엔드 서버 실행
